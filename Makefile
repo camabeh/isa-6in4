@@ -1,4 +1,4 @@
-CFLAGS=-std=c99
+CFLAGS=-std=c99 -pthread
 # CFLAGS=-std=c99 -Wall -Wextra
 
 all: client server client6 server6

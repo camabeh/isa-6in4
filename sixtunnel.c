@@ -16,10 +16,20 @@
 #include <arpa/inet.h>
 #include <linux/if_packet.h>
 #include <net/if.h>
+#include <pthread.h>
 
 #define MTU_SIZE 1280
 
 #define DEBUG 1
+typedef struct shared_s {
+    int mutex; // 0 open, 1 closed
+    int c;
+} shared_t;
+
+
+FILE *log_file;
+pthread_mutex_t log_lock;
+pthread_mutex_t stdout_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void ipv4_wrap(char *buffer, size_t size);
 
@@ -52,6 +62,20 @@ void parse_args(int argc, char **argv) {
     }
 }
 
+
+void logger_stdout(const char *msg) {
+    pthread_mutex_lock(&stdout_lock);
+    printf("%s\n", msg);
+    pthread_mutex_unlock(&stdout_lock);
+}
+
+void logger(char *msg) {
+    pthread_mutex_lock(&log_lock);
+
+    fwrite("TEE", strlen("TEE"), 1, log_file);
+
+    pthread_mutex_unlock(&log_lock);
+}
 
 void ipv6_listen() {
     int socket_fd;
@@ -162,13 +186,6 @@ void ipv4_wrap(char *buffer, size_t size) {
 
     memcpy(data, buffer, size);
 
-//    data[0] = 'T';
-//    data[1] = 'E';
-//    data[2] = 'S';
-//    data[3] = 'T';
-//    data[4] = '7';
-//    data[5] = '\0';
-
 //    ip_header->check = csum((unsigned short *) packet, ip_header->tot_len);
 #if DEBUG
     char str[INET_ADDRSTRLEN];
@@ -195,14 +212,45 @@ void ipv4_wrap(char *buffer, size_t size) {
 //    }
 }
 
+
+pthread_t t_id[2];
+void *tunnel_4in6(void *arg) {
+#ifdef DEBUG
+    logger_stdout("Spawned tunnel_4in6 thread");
+#endif
+
+    return NULL;
+}
+
+void *tunnel_6in4(void *arg) {
+#ifdef DEBUG
+    logger_stdout("Spawned tunnel_6in4 thread");
+#endif
+
+    return NULL;
+}
+
 int main(int argc, char **argv) {
+    log_file = fopen(t1.log, "wt");
+
 //    t1.lan = "lo";
 //    t1.lan = "lo";
 
 //    parse_args(argc, argv);
 
-    ipv6_listen();
+//    ipv6_listen();
 //    ipv4_wrap("", 0);
+
+    int s1 = pthread_create(&(t_id[0]), NULL, &tunnel_4in6, NULL);
+    int s2 = pthread_create(&(t_id[1]), NULL, &tunnel_6in4, NULL);
+
+    if (s1 || s2) {
+        perror("ERROR: Create thread");
+        exit(2);
+    }
+
+    pthread_join(t_id[0], NULL);
+    pthread_join(t_id[1], NULL);
 
     return 0;
 }
