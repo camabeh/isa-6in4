@@ -1,5 +1,8 @@
 #include "sixtunnel.h"
+
 #define DEBUG 1
+
+#include <netinet/ip.h>
 
 args_t args;
 FILE *log_file;
@@ -120,9 +123,9 @@ void ipv6_listen(int ipv6_listen_s_fd, int ipv4_recive_s_fd) {
         uint8_t version = hdr->ip6_ctlun.ip6_un2_vfc;
 
 
-#ifndef DEBUG
+#ifdef DEBUG
         char str[INET6_ADDRSTRLEN];
-        printf("\n----\t----\tSTART\t----\t----\n");
+        printf("\n----\t----\tIPV6-LISTEN START\t----\t----\n");
         printf("Received data_size: \t\t\t %u\n", data_size - ETH_HLEN);
         printf("IPv6 flow_id: \t\t\t\t\t %u\n", flow_id);
         printf("Payload length + IPv6 HDR: \t\t %u\n", payload_length + sizeof(struct ip6_hdr));
@@ -135,7 +138,7 @@ void ipv6_listen(int ipv6_listen_s_fd, int ipv4_recive_s_fd) {
         inet_ntop(AF_INET6, dst, str, INET6_ADDRSTRLEN);
         printf("IPv6 dest: %s\n", str);
         printf("Payload: %3s\n", buffer + ETH_HLEN + sizeof(struct ip6_hdr));
-        printf("----\t----\t END \t----\t----\n");
+        printf("----\t----\tIPV6-LISTEN STOP\t----\t----\n");
 #endif
 
         // Wrap current socket without ethernet header and send it
@@ -149,7 +152,7 @@ void ipv6_listen(int ipv6_listen_s_fd, int ipv4_recive_s_fd) {
  */
 void ipv4_wrap(int ipv4_send_s_fd, char *buffer, size_t size) {
 
-    char *srcIP = "192.168.0.10";
+    char *srcIP = "192.168.0.10"; // TODO get current address
     char *dstIP = args.remote;
 
 #ifdef DEBUG
@@ -266,6 +269,129 @@ void *tunnel_6in4(void *arg) {
 }
 
 
+void ipv6_send(char *buffer, ssize_t len) {
+
+    struct ip6_hdr *hdr = (struct ip6_hdr *) (buffer);
+    struct in6_addr *src = &hdr->ip6_src;
+    struct in6_addr *dst = &hdr->ip6_dst;
+    uint32_t flow_id = ntohl(hdr->ip6_ctlun.ip6_un1.ip6_un1_flow);
+    uint16_t payload_length = ntohs(hdr->ip6_ctlun.ip6_un1.ip6_un1_plen);
+    uint8_t next_header = hdr->ip6_ctlun.ip6_un1.ip6_un1_nxt;
+    uint8_t hop_limit = hdr->ip6_ctlun.ip6_un1.ip6_un1_hlim;
+    uint8_t version = hdr->ip6_ctlun.ip6_un2_vfc;
+
+#ifdef DEBUG
+    char str[INET6_ADDRSTRLEN];
+        printf("\n----\t----\tIPV6-SEND START\t----\t----\n");
+        printf("Received data_size: \t\t\t %u\n", data_size - ETH_HLEN);
+        printf("IPv6 flow_id: \t\t\t\t\t %u\n", flow_id);
+        printf("Payload length + IPv6 HDR: \t\t %u\n", payload_length + sizeof(struct ip6_hdr));
+        printf("IPv6 payload_length: \t\t\t %u\n", payload_length);
+        printf("IPv6 next_header(0 = None): \t %u\n", (next_header == IPPROTO_NONE) ? 0 : next_header);
+        printf("IPv6 hop_limit: \t\t\t\t %u\n", hop_limit);
+        printf("IPv6 version: \t\t\t\t\t %u\n", version);
+        inet_ntop(AF_INET6, src, str, INET6_ADDRSTRLEN);
+        printf("IPv6 source: %s\n", str);
+        inet_ntop(AF_INET6, dst, str, INET6_ADDRSTRLEN);
+        printf("IPv6 dest: %s\n", str);
+        printf("Payload: %3s\n", buffer + ETH_HLEN + sizeof(struct ip6_hdr));
+        printf("----\t----\t IPV6-SEND STOP \t----\t----\n");
+#endif
+
+//    int ipv6_send_s_fd;
+//     Create socket to be able send IPv6 packets
+//    if ((ipv6_send_s_fd = socket(AF_INET6, SOCK_RAW, IPPROTO_IPV6)) < 0) {
+//        perror("ERROR: ipv6_send: Failed to create a socket");
+//        exit(5);
+//    }
+//
+//     I will supply IP Header
+//    int hdrincl = 1;
+//    if (setsockopt(ipv6_send_s_fd, IPPROTO_IP, IP_HDRINCL, &hdrincl, sizeof(hdrincl)) == -1) {
+//        perror("ERROR: ipv6_send: Failed to bind a socket");
+//        exit(6);
+//    }
+
+//    // Create address structure
+//    struct sockaddr_in din;
+//    din.sin_family = AF_INET6;
+//    din.sin_port = 0;
+//    inet_pton(AF_INET, dstIP, &din.sin_addr);
+////    memset(sin.sin_zero, 0, sizeof(sin.sin_zero));
+//
+//    // Create a Packet
+//    char packet[size + sizeof(struct iphdr)]; // TODO
+//    memset(packet, 0, sizeof(packet));
+//
+//    // Structure packet
+//    struct iphdr *ip_header = (struct iphdr *) packet;
+//    // Data to be appended at the end of the ip header
+//    char *data = (char *) (packet + (sizeof(struct iphdr)));
+//    ip_header->version = 4; // IPv4
+//    ip_header->ihl = 5; // 5 x 32-bit words
+//    ip_header->tos = 0; // Type of service
+////    ip_header->tot_len = htons(sizeof(struct iphdr) + strlen(data)); // Total IP packet length
+//    ip_header->tot_len = htons(sizeof(packet)); // Total IP packet length
+//    ip_header->protocol = IPPROTO_IPV6; // 6in4 protocol
+//    ip_header->frag_off = 0x00; //16 bit field = [0:2] flags + [3:15] offset = 0x0
+//    ip_header->ttl = 0xFF; // Max number of hops 16bit
+////    ip_header->id = htons(54321); // 0x00; //16 bit id
+////    ip_header->check = htons(0);  //16 bit checksum of IP header. Can't calculate at this point
+//    ip_header->saddr = inet_addr(srcIP);
+//    ip_header->daddr = inet_addr(dstIP);
+//
+//    memcpy(data, buffer, size);
+
+
+//        sleep(1);
+
+
+
+
+//    ssize_t r;
+//    if ((r = sendto(ipv4_send_s_fd, (char *) packet, sizeof(packet), 0,
+//                    (struct sockaddr *) &din, (socklen_t) sizeof(din))) < 0) {
+//        perror("ERROR: ipv4_wrap: Failed to send send packet");
+//        exit(7);
+//    }
+//
+//    printf("%u\n", r);
+
+}
+
+
+void ipv4_listen(int ipv4_listen_s_fd, int ipv6_send_s_fd) {
+    // MTU_SIZE + eth header + IPv4 header
+    char buffer[MTU_SIZE + ETH_HLEN + 20];
+    struct sockaddr sin;
+
+    while (1) {
+        ssize_t data_size;
+        data_size = recvfrom(ipv4_listen_s_fd, buffer, MTU_SIZE + ETH_HLEN + 20, 0, &sin, (socklen_t *) &sin);
+
+        struct iphdr *hdr = (struct iphdr *) (buffer + ETH_HLEN);
+        unsigned int ttl = hdr->ttl;
+        unsigned int len = hdr->tot_len;
+
+
+#ifdef DEBUG
+        char str[INET_ADDRSTRLEN];
+        printf("\n----\t----\tSTART\t----\t----\n");
+        printf("Received data_size: \t\t\t %u\n", data_size);
+        printf("IPv4 length: \t\t\t %u\n", len);
+        printf("IPv4 hop_limit: \t\t\t\t %u\n", ttl);
+        inet_ntop(AF_INET, src, str, INET_ADDRSTRLEN);
+        printf("IPv4 source: %s\n", str);
+        inet_ntop(AF_INET, dst, str, INET_ADDRSTRLEN);
+        printf("IPv4 dest: %s\n", str);
+        printf("----\t----\t END \t----\t----\n");
+#endif
+        // Wrap current packet without Ethernet header and IPv4 header
+        ipv6_send(buffer + ETH_HLEN - 20, data_size - ETH_HLEN - 20);
+    }
+}
+
+
 /**
  * Creates IPv4 to IPv6 tunnel, listens on this IPv4 address and unpacks
  * packet and forwards it (all info in IPv6 header)
@@ -274,8 +400,28 @@ void *tunnel_4in6(void *arg) {
 #ifdef DEBUG
     logger("Spawned tunnel_4in6 thread");
 #endif
+    // Create socket to receive all IPv4 traffic
+    int ipv4_listen_s_fd, ipv6_send_s_fd;
 
+    ipv4_listen_s_fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
+    if (ipv4_listen_s_fd < 0) {
+        perror("ERROR: ipv4_listen: Failed to create a socket");
+        exit(3);
+    }
 
+    // Bind socket to receive all IPv4 traffic
+    struct sockaddr_ll sock_address;
+    memset(&sock_address, 0, sizeof(sock_address));
+    sock_address.sll_family = PF_PACKET;
+    sock_address.sll_protocol = htons(ETH_P_IP);
+    sock_address.sll_ifindex = if_nametoindex(args.wan);
+    if (bind(ipv4_listen_s_fd, (struct sockaddr *) &sock_address, sizeof(sock_address)) < 0) {
+        perror("ERROR: ipv4_listen: Failed to bind a socket");
+        exit(4);
+    }
+
+    ipv6_send_s_fd = -1;
+    ipv4_listen(ipv4_listen_s_fd, ipv6_send_s_fd);
 
 #ifdef DEBUG
     logger("Exiting tunnel_4in6 thread");
